@@ -9,7 +9,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "../components/Card";
 import { PageHeader } from "../components/PageHeader";
 import {
@@ -58,10 +58,38 @@ export function ProposalDetailsPage() {
   const [page, setPage] = useState(1);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
   const [newOption, setNewOption] = useState("");
+  const remoteUpdateRef = useRef(false);
 
   useEffect(() => {
-    proposalDetailsStorage.saveState(state);
+    if (remoteUpdateRef.current) {
+      remoteUpdateRef.current = false;
+      proposalDetailsStorage.saveLocalState(state);
+      return;
+    }
+
+    void proposalDetailsStorage.saveState(state);
   }, [state]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    void proposalDetailsStorage.loadRemoteState().then((remoteState) => {
+      if (mounted && remoteState) {
+        remoteUpdateRef.current = true;
+        setState(remoteState);
+      }
+    });
+
+    const unsubscribe = proposalDetailsStorage.subscribe((remoteState) => {
+      remoteUpdateRef.current = true;
+      setState(remoteState);
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   const sortedRows = useMemo(
     () => [...state.rows].sort((a, b) => getIdNumber(b.id) - getIdNumber(a.id)),
@@ -261,6 +289,9 @@ export function ProposalDetailsPage() {
             <p className="text-sm font-bold text-ink">{state.rows.length} records</p>
             <p className="mt-1 text-sm font-medium text-muted">
               Showing up to {PAGE_SIZE} rows per page, sorted by newest Unique ID.
+              {proposalDetailsStorage.isRealtimeEnabled()
+                ? " Realtime sync is active."
+                : " Local mode is active until Supabase is configured."}
             </p>
           </div>
           <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />

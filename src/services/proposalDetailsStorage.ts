@@ -3,8 +3,11 @@ import type {
   ProposalDetailsState,
   ProposalRow,
 } from "../types/proposalDetails";
+import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
 
 const STORAGE_KEY = "trackhub.proposalDetails";
+const REMOTE_TABLE = "trackhub_proposal_details";
+const REMOTE_DOCUMENT_ID = "default";
 
 export const UNIQUE_ID_COLUMN_ID = "uniqueId";
 
@@ -67,7 +70,17 @@ function normalizeState(state: ProposalDetailsState): ProposalDetailsState {
   };
 }
 
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabase =
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
+function saveLocalState(state: ProposalDetailsState) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(state)));
+}
+
 export const proposalDetailsStorage = {
+  isRealtimeEnabled: () => Boolean(supabase),
   getState: (): ProposalDetailsState => {
     if (typeof window === "undefined") {
       return { columns: defaultProposalColumns, rows: [], nextIdNumber: 1 };
@@ -82,7 +95,65 @@ export const proposalDetailsStorage = {
       return { columns: defaultProposalColumns, rows: [], nextIdNumber: 1 };
     }
   },
-  saveState: (state: ProposalDetailsState) => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(state)));
+  loadRemoteState: async (): Promise<ProposalDetailsState | null> => {
+    if (!supabase) {
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from(REMOTE_TABLE)
+      .select("state")
+      .eq("id", REMOTE_DOCUMENT_ID)
+      .maybeSingle();
+
+    if (error || !data?.state) {
+      return null;
+    }
+
+    return normalizeState(data.state as ProposalDetailsState);
+  },
+  saveLocalState,
+  saveState: async (state: ProposalDetailsState) => {
+    const normalizedState = normalizeState(state);
+    saveLocalState(normalizedState);
+
+    if (!supabase) {
+      return;
+    }
+
+    await supabase.from(REMOTE_TABLE).upsert({
+      id: REMOTE_DOCUMENT_ID,
+      state: normalizedState,
+      updated_at: new Date().toISOString(),
+    });
+  },
+  subscribe: (onStateChange: (state: ProposalDetailsState) => void) => {
+    if (!supabase) {
+      return () => undefined;
+    }
+
+    const channel: RealtimeChannel = supabase
+      .channel("trackhub-proposal-details")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: REMOTE_TABLE,
+          filter: `id=eq.${REMOTE_DOCUMENT_ID}`,
+        },
+        (payload) => {
+          const nextState = (payload.new as { state?: ProposalDetailsState })?.state;
+
+          if (nextState) {
+            onStateChange(normalizeState(nextState));
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   },
 };
