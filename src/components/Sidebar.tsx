@@ -28,11 +28,17 @@ export function Sidebar({
       />
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex border-r border-slate-200 bg-white transition-all duration-300 lg:sticky lg:top-0 lg:z-10 ${
-          collapsed ? "w-[88px]" : "w-[280px]"
+          collapsed ? "w-24" : "w-[280px]"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="flex min-h-0 w-full flex-col px-4 py-5">
-          <div className="mb-6 flex items-center justify-between gap-3">
+          <div
+            className={`mb-6 flex gap-3 ${
+              collapsed
+                ? "flex-col items-center justify-start"
+                : "items-center justify-between"
+            }`}
+          >
             <Logo collapsed={collapsed} />
             <button
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -44,7 +50,7 @@ export function Sidebar({
             </button>
           </div>
 
-          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+          <nav className={`min-h-0 flex-1 space-y-1 overflow-y-auto ${collapsed ? "" : "pr-1"}`}>
             {modules.map((module) => {
               const Icon = module.icon;
               return (
@@ -71,20 +77,6 @@ export function Sidebar({
               );
             })}
           </nav>
-
-          <div
-            className={`mt-6 rounded-lg border border-slate-200 bg-surface p-3 ${
-              collapsed ? "hidden" : "block"
-            }`}
-          >
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-              Workspace
-            </p>
-            <p className="mt-2 text-sm font-semibold text-ink">Foundation ready</p>
-            <p className="mt-1 text-xs leading-5 text-muted">
-              Modules are connected and prepared for future configuration.
-            </p>
-          </div>
         </div>
       </aside>
     </>
